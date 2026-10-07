@@ -31,6 +31,9 @@ public sealed record FilmDto(int Id, string Title, string? Description, ImageDto
 
 public sealed record PackageDto(int Id, string Name, string? Summary, decimal? Price, string? Currency, string? PriceNote, string[] Features);
 
+/// <summary>One photo on the Portfolio wall, with the album it belongs to.</summary>
+public sealed record PortfolioImageDto(ImageDto Image, string GallerySlug, string GalleryTitle);
+
 public sealed record InquiryRequest(
     [Required, StringLength(200, MinimumLength = 2)] string Name,
     [Required, StringLength(32, MinimumLength = 6)] string Mobile,
@@ -56,7 +59,7 @@ public sealed class PublicController(
     [ResponseCache(Duration = 60, Location = ResponseCacheLocation.Any)]
     public async Task<IReadOnlyList<GalleryCard>> Galleries(GalleryCategory? category, bool? featured, CancellationToken ct)
     {
-        var q = db.PublicGalleries.AsNoTracking().Where(g => g.IsPublished);
+        var q = db.PublicGalleries.AsNoTracking().PublishedStories();
         if (category is not null) q = q.Where(g => g.Category == category);
         if (featured == true) q = q.Where(g => g.IsFeatured);
         var rows = await q.OrderBy(g => g.SortOrder).ThenByDescending(g => g.EventDate)
@@ -83,10 +86,11 @@ public sealed class PublicController(
         var g = await db.PublicGalleries.AsNoTracking()
             .Include(x => x.Images.OrderBy(i => i.SortOrder))
             .Include(x => x.CoverImage)
-            .SingleOrDefaultAsync(x => x.Slug == slug && x.IsPublished, ct);
+            .PublishedStories()
+            .SingleOrDefaultAsync(x => x.Slug == slug, ct);
         if (g is null) return this.NotFoundProblem("Gallery not found.");
 
-        var order = await db.PublicGalleries.AsNoTracking().Where(x => x.IsPublished)
+        var order = await db.PublicGalleries.AsNoTracking().PublishedStories()
             .OrderBy(x => x.SortOrder).ThenByDescending(x => x.EventDate)
             .Select(x => new GalleryNav(x.Slug, x.Title)).ToListAsync(ct);
         var idx = order.FindIndex(x => x.Slug == g.Slug);
@@ -97,11 +101,32 @@ public sealed class PublicController(
             idx > 0 ? order[idx - 1] : null, idx >= 0 && idx < order.Count - 1 ? order[idx + 1] : null);
     }
 
+    /// <summary>
+    /// The Portfolio wall: every photo of every published album, in album order (Admin → Portfolio sort order)
+    /// then photo order. Paged so the page can load more as the visitor scrolls.
+    /// </summary>
+    [HttpGet("portfolio")]
+    [ResponseCache(Duration = 60, Location = ResponseCacheLocation.Any)]
+    public async Task<Paged<PortfolioImageDto>> Portfolio(int page = 1, int pageSize = 60, CancellationToken ct = default)
+    {
+        (page, pageSize) = ApiHelpers.Clamp(page, pageSize, 120);
+        var q = db.PublicImages.AsNoTracking().Where(i => i.Gallery.IsPublished);
+        var total = await q.CountAsync(ct);
+        var rows = await q
+            .OrderBy(i => i.Gallery.SortOrder).ThenBy(i => i.GalleryId).ThenBy(i => i.SortOrder).ThenBy(i => i.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(i => new { i.Id, i.Image, i.AltText, i.Gallery.Slug, i.Gallery.Title })
+            .ToListAsync(ct);
+        var items = rows.Select(r => new PortfolioImageDto(ImageDto.From(r.Image, AltOr(r.AltText, $"{r.Title} — wedding photography by Frans Studios"), r.Id), r.Slug, r.Title)).ToList();
+        return new Paged<PortfolioImageDto>(items, total, page, pageSize);
+    }
+
     [HttpGet("films")]
     [ResponseCache(Duration = 60, Location = ResponseCacheLocation.Any)]
     public async Task<IReadOnlyList<FilmDto>> Films(CancellationToken ct)
     {
-        var films = await db.PublicFilms.AsNoTracking().Where(f => f.IsPublished && f.VideoKey != null)
+        // Films may be published with only a poster ("coming soon"); videoUrl is null until the video is uploaded.
+        var films = await db.PublicFilms.AsNoTracking().Where(f => f.IsPublished && (f.VideoKey != null || f.Poster != null))
             .OrderBy(f => f.SortOrder).ToListAsync(ct);
         return films.Select(ToFilmDto).ToList();
     }

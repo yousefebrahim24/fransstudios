@@ -4,10 +4,23 @@ import { api, ApiError } from '../../services/api.js'
 import { t } from '../../i18n/index.js'
 import { inquiryOptions } from '../../content/site.js'
 
-const empty = { name: '', mobile: '', email: '', eventType: '', eventDate: '', venue: '', coverage: '', source: '', message: '', website: '' }
+const empty = { name: '', eventType: '', eventDate: '', venue: '', mobile: '', coverage: '', source: '', message: '', website: '' }
 
-/** The single inquiry form used on Packages and Contact (replaces the two different WordPress forms). */
-export function InquiryForm({ compact = false }) {
+// Fields the studio needs to reply, per variant (as required on the live forms; plus a name).
+const requiredBy = {
+  packages: ['name', 'mobile', 'coverage'],
+  contact: ['name', 'venue', 'mobile'],
+}
+
+/**
+ * The inquiry form. Both variants post to the same endpoint and land in Admin → Inquiries.
+ * - "packages" (live fransstudios.com/packages-2): Full Name · Event Type · Event Date · City / Venue location ·
+ *   Mobile · Estimated Coverage Time · How did you hear about us? · Message.
+ * - "contact" (live fransstudios.com/contact-us): Name · Wedding / Session date · City / Venue location · Mobile · Message.
+ */
+export function InquiryForm({ variant = 'packages' }) {
+  const isContact = variant === 'contact'
+  const required = requiredBy[variant]
   const [values, setValues] = useState(empty)
   const [status, setStatus] = useState('idle') // idle | sending | sent
   const [error, setError] = useState(null)
@@ -17,12 +30,18 @@ export function InquiryForm({ compact = false }) {
 
   async function submit(e) {
     e.preventDefault()
+    const missing = required.filter((k) => !values[k].trim())
+    if (missing.length) {
+      setError(new ApiError(400, { title: t('common.error'), errors: Object.fromEntries(missing.map((k) => [k, [t('inquiry.required')]])) }))
+      e.currentTarget.querySelector(`[name="${missing[0]}"]`)?.focus()
+      return
+    }
     setStatus('sending')
     setError(null)
     try {
       await api('/api/public/inquiries', {
         method: 'POST',
-        body: { ...values, eventDate: values.eventDate || null, email: values.email || null },
+        body: { ...values, eventDate: values.eventDate || null, email: null },
       })
       setStatus('sent')
       setValues(empty)
@@ -34,45 +53,74 @@ export function InquiryForm({ compact = false }) {
 
   if (status === 'sent') {
     return (
-      <div className="form-success" role="status">
+      <div className="inquiry-sent" role="status">
+        <p className="inquiry-sent__title">Thank you!</p>
         <p>{t('inquiry.thanks')}</p>
       </div>
     )
   }
 
+  const hasFieldErrors = error && Object.keys(error.fieldErrors).length > 0
+
   return (
-    <form className={compact ? 'inquiry inquiry--compact' : 'inquiry'} onSubmit={submit} noValidate>
-      {error && !Object.keys(error.fieldErrors).length && (
+    <form className="inquiry" onSubmit={submit} noValidate>
+      {error && !hasFieldErrors && (
         <p className="form-error" role="alert">
           {error.message}
         </p>
       )}
-      <div className="inquiry__grid">
-        <Field label={t('inquiry.name')} name="name" autoComplete="name" required value={values.name} onChange={set('name')} error={fieldError('name')} />
-        <Field label={t('inquiry.mobile')} name="mobile" type="tel" autoComplete="tel" inputMode="tel" required value={values.mobile} onChange={set('mobile')} error={fieldError('mobile')} />
-        <Field label={t('inquiry.email')} name="email" type="email" autoComplete="email" value={values.email} onChange={set('email')} error={fieldError('email')} />
-        <Field label={t('inquiry.eventType')} as="select" name="eventType" value={values.eventType} onChange={set('eventType')}>
-          <option value="">—</option>
-          {inquiryOptions.eventTypes.map((o) => (
-            <option key={o}>{o}</option>
-          ))}
-        </Field>
-        <Field label={t('inquiry.eventDate')} name="eventDate" type="date" value={values.eventDate} onChange={set('eventDate')} error={fieldError('eventDate')} />
-        <Field label={t('inquiry.venue')} name="venue" value={values.venue} onChange={set('venue')} />
-        <Field label={t('inquiry.coverage')} as="select" name="coverage" value={values.coverage} onChange={set('coverage')}>
-          <option value="">—</option>
-          <option value="Half day">{t('inquiry.coverage.half')}</option>
-          <option value="Full day">{t('inquiry.coverage.full')}</option>
-          <option value="Not sure yet">{t('inquiry.coverage.unsure')}</option>
-        </Field>
-        <Field label={t('inquiry.source')} as="select" name="source" value={values.source} onChange={set('source')}>
-          <option value="">—</option>
-          {inquiryOptions.sources.map((o) => (
-            <option key={o}>{o}</option>
-          ))}
-        </Field>
-      </div>
-      <Field label={t('inquiry.message')} as="textarea" name="message" rows={5} value={values.message} onChange={set('message')} error={fieldError('message')} />
+      <Field
+        label={t(isContact ? 'inquiry.nameShort' : 'inquiry.name')}
+        name="name"
+        autoComplete="name"
+        required
+        value={values.name}
+        onChange={set('name')}
+        error={fieldError('name')}
+      />
+      {!isContact && (
+        <Field label={t('inquiry.eventType')} name="eventType" value={values.eventType} onChange={set('eventType')} error={fieldError('eventType')} />
+      )}
+      <Field
+        label={t(isContact ? 'inquiry.sessionDate' : 'inquiry.eventDate')}
+        name="eventDate"
+        type="date"
+        value={values.eventDate}
+        onChange={set('eventDate')}
+        error={fieldError('eventDate')}
+      />
+      <Field label={t('inquiry.venue')} name="venue" required={isContact} value={values.venue} onChange={set('venue')} error={fieldError('venue')} />
+      <Field
+        label={t('inquiry.mobile')}
+        name="mobile"
+        type="tel"
+        autoComplete="tel"
+        inputMode="tel"
+        placeholder={t('inquiry.mobilePlaceholder')}
+        required
+        value={values.mobile}
+        onChange={set('mobile')}
+        error={fieldError('mobile')}
+      />
+      {!isContact && (
+        <>
+          <Field label={t('inquiry.coverage')} as="select" name="coverage" required value={values.coverage} onChange={set('coverage')} error={fieldError('coverage')}>
+            <option value="" disabled>
+              {t('inquiry.select')}
+            </option>
+            {inquiryOptions.coverage.map((o) => (
+              <option key={o}>{o}</option>
+            ))}
+          </Field>
+          <Field label={t('inquiry.source')} as="select" name="source" value={values.source} onChange={set('source')}>
+            <option value="">{t('inquiry.select')}</option>
+            {inquiryOptions.sources.map((o) => (
+              <option key={o}>{o}</option>
+            ))}
+          </Field>
+        </>
+      )}
+      <Field label={t('inquiry.message')} as="textarea" name="message" rows={4} value={values.message} onChange={set('message')} error={fieldError('message')} />
 
       {/* Honeypot: invisible to people, irresistible to bots. */}
       <div className="visually-hidden" aria-hidden="true">
@@ -82,7 +130,7 @@ export function InquiryForm({ compact = false }) {
         </label>
       </div>
 
-      <button type="submit" className="btn" disabled={status === 'sending'}>
+      <button type="submit" className="inquiry__submit" disabled={status === 'sending'}>
         {status === 'sending' ? t('inquiry.sending') : t('inquiry.submit')}
       </button>
     </form>

@@ -2,12 +2,13 @@
    with contrast tuned to WCAG AA for body text. */
 :root {
   /* colour */
-  --paper: #f6f3ee;
-  --paper-2: #eee9e0;
-  --surface: #fffdf9;
+  --paper: #ffffff;          /* site background (Figma: white) */
+  --paper-2: #f4f4f2;        /* image placeholders / soft panels */
+  --surface: #ffffff;
   --ink: #23281f;
   --ink-2: #444a3d;
-  --muted: #656a5d;          /* 4.9:1 on --paper */
+  --muted: #656a5d;          /* 5.6:1 on white */
+  --stats-ink: #2b2b2b;      /* home stats band (Figma) */
   --line: #dcd5c8;
   --line-strong: #c4bba9;
   --olive: #536941;          /* brand colour, 5.7:1 on --paper */

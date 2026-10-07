@@ -1,57 +1,110 @@
+import '@fontsource/dm-sans/400.css'
 import { usePageTitle } from '../../hooks/usePageTitle.js'
 import { InquiryForm } from '../../components/public/InquiryForm.jsx'
+import { SocialIcon, MailIcon } from '../../components/public/FooterIcons.jsx'
 import { faq, studio } from '../../content/site.js'
-import { t } from '../../i18n/index.js'
 
+// Hero photo: drop it in src/assets/contact/ named "hero" (hero.jpg / .webp) — picked up automatically.
+const heroFiles = import.meta.glob('../../assets/contact/hero.{jpg,jpeg,webp,png,avif}', { eager: true, query: '?url', import: 'default' })
+const heroPhoto = Object.values(heroFiles)[0]
+
+function PinIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z" />
+      <circle cx="12" cy="10" r="2.4" />
+    </svg>
+  )
+}
+
+/**
+ * Contact (structure of the live fransstudios.com/contact-us): the Packages layout — photo, white form
+ * card overlapping it, #F5F5F5 band with the intro on the left — followed by the FAQ accordion and a
+ * "Let’s Connect" band.
+ */
 export default function ContactPage() {
   usePageTitle('Contact')
+
   return (
-    <div className="pub-page">
-      <header className="page-head">
-        <p className="eyebrow">Contact</p>
-        <h1 className="page-head__title">This is where the magic begins</h1>
-        <p className="page-head__lead">Write to us, message us on WhatsApp, or send the form — we reply to every inquiry personally.</p>
-      </header>
+    <div className="packages-page contact-page">
+      <h1 className="visually-hidden">Contact Frans Studios</h1>
 
-      <div className="contact">
-        <aside className="contact__ways" aria-label="Ways to reach us">
-          <div className="contact__way">
-            <h2 className="eyebrow">Email</h2>
-            <a href={`mailto:${studio.email}`}>{studio.email}</a>
-          </div>
-          <div className="contact__way">
-            <h2 className="eyebrow">Phone &amp; WhatsApp</h2>
-            <a href={studio.phoneHref}>{studio.phoneDisplay}</a>
-            <a href={studio.whatsappHref} target="_blank" rel="noopener noreferrer">
-              Message on WhatsApp
-            </a>
-          </div>
-          <div className="contact__way">
-            <h2 className="eyebrow">Instagram</h2>
-            <a href={studio.instagramHref} target="_blank" rel="noopener noreferrer">
-              {studio.instagramHandle}
-            </a>
-          </div>
-        </aside>
-
-        <section className="contact__form" aria-labelledby="form-title">
-          <h2 id="form-title" className="section-head__title">
-            {t('inquiry.title')}
-          </h2>
-          <InquiryForm />
-        </section>
+      <div className="packages-hero contact-hero" aria-hidden={heroPhoto ? undefined : true}>
+        {heroPhoto && <img className="packages-hero__img" src={heroPhoto} alt="" fetchPriority="high" decoding="async" />}
       </div>
 
-      <section className="pub-section faq" aria-labelledby="faq-title">
-        <h2 id="faq-title" className="section-head__title">
-          Frequently asked questions
+      <div className="packages-band">
+        <div className="packages-band__inner">
+          <section className="packages-card" aria-labelledby="contact-form-title">
+            <h2 id="contact-form-title" className="packages-card__title">
+              Let’s Talk
+            </h2>
+            <p className="packages-card__lead">Save the moments you want to keep forever</p>
+            <InquiryForm variant="contact" />
+          </section>
+
+          <section className="packages-info" aria-labelledby="contact-info-title">
+            <h2 id="contact-info-title" className="packages-info__title">
+              This is where all the magic happens!
+            </h2>
+            <p className="packages-info__text">
+              Please take a moment to fill out the form, and we will get back to you as soon as possible. Alternatively, feel free to reach out to us via
+              email.
+            </p>
+
+            <div className="packages-info__group">
+              <h3 className="packages-info__label">Inquiries</h3>
+              <a className="packages-info__link" href={`mailto:${studio.email}`}>
+                <MailIcon />
+                {studio.email}
+              </a>
+            </div>
+            <div className="packages-info__group">
+              <h3 className="packages-info__label">Follow</h3>
+              <a className="packages-info__link" href={studio.instagramHref} target="_blank" rel="noopener noreferrer">
+                <SocialIcon name="Instagram" />
+                Instagram
+              </a>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <section className="contact-faq" aria-labelledby="faq-title">
+        <h2 id="faq-title" className="contact-faq__title">
+          Frequently <br />
+          Asked <br />
+          Questions
         </h2>
-        {faq.map((item) => (
-          <details key={item.q} className="faq__item">
-            <summary>{item.q}</summary>
-            <p>{item.a}</p>
-          </details>
-        ))}
+        <div className="contact-faq__list">
+          {faq.map((item, i) => (
+            // Shared name = only one answer open at a time (like the live accordion); the first starts open.
+            <details key={item.q} className="contact-faq__item" name="faq" open={i === 0}>
+              <summary className="contact-faq__q">{item.q}</summary>
+              <div className="contact-faq__a">
+                {item.a.map((p) => (
+                  <p key={p}>{p}</p>
+                ))}
+              </div>
+            </details>
+          ))}
+        </div>
+      </section>
+
+      <section className="contact-connect" aria-labelledby="connect-title">
+        <h2 id="connect-title" className="contact-connect__title">
+          Let’s Connect
+        </h2>
+        <p className="contact-connect__lead">Capturing moments that words can’t.</p>
+        <div className="contact-connect__place">
+          <PinIcon />
+          <div>
+            <p className="contact-connect__country">Egypt</p>
+            <a className="contact-connect__phone" href={studio.phoneHref}>
+              {studio.phoneFooter}
+            </a>
+          </div>
+        </div>
       </section>
     </div>
   )

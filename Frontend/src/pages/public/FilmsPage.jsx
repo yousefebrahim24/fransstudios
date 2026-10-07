@@ -1,32 +1,14 @@
-import { useState } from 'react'
 import { useApi } from '../../hooks/useApi.js'
 import { usePageTitle } from '../../hooks/usePageTitle.js'
-import { largestSrc, ResponsiveImage } from '../../components/media/ResponsiveImage.jsx'
+import { VideoTile } from '../../components/media/VideoTile.jsx'
 import { ErrorState, Spinner } from '../../components/ui/Spinner.jsx'
 import { t } from '../../i18n/index.js'
 
-/** Poster first; the video element (and its download) only loads when the visitor presses play. */
+/** Poster with player chrome; the video file only downloads when the visitor presses play. */
 function Film({ film }) {
-  const [playing, setPlaying] = useState(false)
-  const ratio = film.poster ? `${film.poster.width} / ${film.poster.height}` : '16 / 9'
   return (
     <article className="film">
-      <div className="film__frame" style={{ aspectRatio: ratio }}>
-        {playing ? (
-          <video className="film__video" controls autoPlay playsInline preload="auto" poster={film.poster ? largestSrc(film.poster, 'jpg') : undefined}>
-            <source src={film.videoUrl} type={film.videoMimeType ?? 'video/mp4'} />
-          </video>
-        ) : (
-          <button type="button" className="film__poster" onClick={() => setPlaying(true)} aria-label={`Play film: ${film.title}`}>
-            {film.poster && <ResponsiveImage image={film.poster} sizes="(min-width: 1200px) 1100px, 100vw" alt="" />}
-            <span className="film__play" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="28" height="28">
-                <path d="M8 5v14l11-7z" fill="currentColor" />
-              </svg>
-            </span>
-          </button>
-        )}
-      </div>
+      <VideoTile film={film} sizes="(min-width: 1200px) 1100px, 100vw" />
       <div className="film__meta">
         <h2 className="film__title">{film.title}</h2>
         {film.description && <p className="film__desc">{film.description}</p>}

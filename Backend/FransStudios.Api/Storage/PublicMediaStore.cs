@@ -55,7 +55,7 @@ public sealed class PublicMediaStore(IOptions<StorageOptions> options, ILogger<P
                 foreach (var w in widths)
                 {
                     using var resized = w == image.Width ? image.Clone(_ => { }) : image.Clone(x => x.Resize(w, 0, KnownResamplers.Lanczos3));
-                    await resized.SaveAsWebpAsync(Path.Combine(dir, $"{w}.webp"), new WebpEncoder { Quality = 80, Method = WebpEncodingMethod.Level5 }, ct);
+                    await resized.SaveAsWebpAsync(Path.Combine(dir, $"{w}.webp"), new WebpEncoder { FileFormat = WebpFileFormatType.Lossy, Quality = 80, Method = WebpEncodingMethod.Level5 }, ct);
                     await resized.SaveAsJpegAsync(Path.Combine(dir, $"{w}.jpg"), new JpegEncoder { Quality = 82 }, ct);
                 }
             }

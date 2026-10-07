@@ -29,12 +29,26 @@ function readCookie(name) {
 }
 
 let csrfRequest = null
-export function ensureCsrf() {
-  if (readCookie('XSRF-TOKEN')) return Promise.resolve()
+/** @param {boolean} [force] fetch a new token even if one is cached (e.g. after it went stale). */
+export function ensureCsrf(force = false) {
+  if (!force && readCookie('XSRF-TOKEN')) return Promise.resolve()
   csrfRequest ??= fetch('/api/auth/csrf', { credentials: 'same-origin' }).finally(() => {
     csrfRequest = null
   })
   return csrfRequest
+}
+
+// The token is bound to the signed-in user, so it goes stale when the session expires or the user
+// changes (the cookie outlives both). The server then answers 400 with this title.
+const CSRF_REJECTED = 'Invalid or missing CSRF token.'
+
+async function isCsrfRejection(response) {
+  if (response.status !== 400) return false
+  try {
+    return (await response.clone().json())?.title === CSRF_REJECTED
+  } catch {
+    return false
+  }
 }
 
 const listeners = new Set()
@@ -53,19 +67,25 @@ export async function api(path, { method = 'GET', body, form, signal, query } = 
   const headers = { Accept: 'application/json' }
   const unsafe = method !== 'GET' && method !== 'HEAD'
 
-  if (unsafe) {
-    await ensureCsrf()
-    headers['X-XSRF-TOKEN'] = readCookie('XSRF-TOKEN') ?? ''
-  }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
 
-  const response = await fetch(url, {
-    method,
-    headers,
-    body: form ?? (body !== undefined ? JSON.stringify(body) : undefined),
-    credentials: 'same-origin',
-    signal,
-  })
+  const send = async (refreshCsrf) => {
+    if (unsafe) {
+      await ensureCsrf(refreshCsrf)
+      headers['X-XSRF-TOKEN'] = readCookie('XSRF-TOKEN') ?? ''
+    }
+    return fetch(url, {
+      method,
+      headers,
+      body: form ?? (body !== undefined ? JSON.stringify(body) : undefined),
+      credentials: 'same-origin',
+      signal,
+    })
+  }
+
+  let response = await send(false)
+  // Stale token: get a fresh one and retry once.
+  if (unsafe && (await isCsrfRejection(response))) response = await send(true)
 
   if (response.status === 401 && !path.startsWith('/api/auth/')) listeners.forEach((fn) => fn())
 
@@ -97,7 +117,19 @@ export function toQuery(params) {
  * @param {(fraction: number) => void} [onProgress]
  */
 export async function upload(path, form, onProgress) {
-  await ensureCsrf()
+  try {
+    return await uploadOnce(path, form, onProgress, false)
+  } catch (err) {
+    // Stale token: get a fresh one and retry once.
+    if (err instanceof ApiError && err.status === 400 && err.problem?.title === CSRF_REJECTED) {
+      return uploadOnce(path, form, onProgress, true)
+    }
+    throw err
+  }
+}
+
+async function uploadOnce(path, form, onProgress, refreshCsrf) {
+  await ensureCsrf(refreshCsrf)
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('POST', path)

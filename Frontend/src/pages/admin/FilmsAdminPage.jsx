@@ -105,7 +105,7 @@ export default function FilmsAdminPage() {
     <>
       <PageHeader
         title="Films"
-        subtitle="Upload a web version (1080p H.264 MP4 with “fast start”, ideally under ~300 MB). Masters belong in the client’s Drive folder, not here."
+        subtitle="The first 4 published films appear on the home page. A poster alone is enough to publish (shown as “Film coming soon”); add the web video later (1080p H.264 MP4 with “fast start”, ideally under ~300 MB). Masters belong in the client’s Drive folder, not here."
         actions={
           <button type="button" className="adm-btn adm-btn--primary" onClick={create}>
             + New film

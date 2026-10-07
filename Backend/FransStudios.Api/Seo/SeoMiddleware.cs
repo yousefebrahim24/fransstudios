@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using FransStudios.Api.Configuration;
 using FransStudios.Api.Data;
+using FransStudios.Api.Entities;
 using FransStudios.Api.Features.Public;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -63,7 +64,7 @@ public sealed class SeoMiddleware(RequestDelegate next, IWebHostEnvironment env,
         if (!StaticPages.ContainsKey(path) && IsSingleSegment(path) && !IsAppArea(path))
         {
             var slug = path[1..];
-            if (await db.PublicGalleries.AnyAsync(g => g.Slug == slug && g.IsPublished, ctx.RequestAborted))
+            if (await db.PublicGalleries.PublishedStories().AnyAsync(g => g.Slug == slug, ctx.RequestAborted))
             {
                 ctx.Response.Redirect($"/portfolio/{slug}", permanent: true);
                 return;
@@ -104,8 +105,8 @@ public sealed class SeoMiddleware(RequestDelegate next, IWebHostEnvironment env,
         if (path.StartsWith("/portfolio/", StringComparison.OrdinalIgnoreCase) && IsSingleSegment(path["/portfolio".Length..]))
         {
             var slug = path["/portfolio/".Length..];
-            var g = await db.PublicGalleries.AsNoTracking()
-                .Where(x => x.Slug == slug && x.IsPublished)
+            var g = await db.PublicGalleries.AsNoTracking().PublishedStories()
+                .Where(x => x.Slug == slug)
                 .Select(x => new
                 {
                     x.Title, x.Intro, x.SeoDescription, x.Location,
@@ -257,7 +258,7 @@ public static class SeoEndpoints
         app.MapGet("/sitemap.xml", async (AppDbContext db, IOptions<SiteOptions> site, CancellationToken ct) =>
         {
             var root = site.Value.PublicBaseUrl.TrimEnd('/');
-            var galleries = await db.PublicGalleries.AsNoTracking().Where(g => g.IsPublished)
+            var galleries = await db.PublicGalleries.AsNoTracking().PublishedStories()
                 .OrderBy(g => g.SortOrder).Select(g => new { g.Slug, g.UpdatedAt }).ToListAsync(ct);
 
             var sb = new StringBuilder("""<?xml version="1.0" encoding="UTF-8"?>""" + "\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");

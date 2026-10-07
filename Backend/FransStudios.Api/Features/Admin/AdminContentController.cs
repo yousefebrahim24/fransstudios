@@ -39,6 +39,8 @@ public sealed record SaveGalleryRequest(
     bool IsFeatured,
     int SortOrder);
 
+public sealed record AdminWallDto(int? Id, IReadOnlyList<AdminGalleryImage> Images);
+
 public sealed record UpdateImageRequest([Required(AllowEmptyStrings = true), StringLength(300)] string AltText);
 public sealed record ReorderRequest([Required] int[] Ids);
 public sealed record SetImageRequest(int ImageId);
@@ -48,10 +50,44 @@ public sealed record SetImageRequest(int ImageId);
 [Authorize(Policy = Policies.Admin)]
 public sealed class AdminGalleriesController(AppDbContext db, PublicMediaStore store, IOptions<StorageOptions> storage) : ControllerBase
 {
+    /// <summary>Photos uploaded straight to the Portfolio wall (newest first). Id is null until the first upload.</summary>
+    [HttpGet("wall")]
+    public async Task<AdminWallDto> Wall(CancellationToken ct)
+    {
+        var wall = await db.PublicGalleries.AsNoTracking().Include(x => x.Images.OrderBy(i => i.SortOrder))
+            .SingleOrDefaultAsync(x => x.Slug == PortfolioWall.Slug, ct);
+        return new AdminWallDto(wall?.Id,
+            wall?.Images.Select(i => new AdminGalleryImage(i.Id, ImageDto.From(i.Image, i.AltText, i.Id), i.AltText, i.SortOrder)).ToList() ?? []);
+    }
+
+    /// <summary>Upload photos straight to the Portfolio wall (multipart field "files"). No story needed.</summary>
+    [HttpPost("wall/images")]
+    [RequestSizeLimit(1_500_000_000)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 1_500_000_000)]
+    public async Task<ActionResult<IReadOnlyList<AdminGalleryImage>>> UploadToWall([FromForm] IFormFileCollection files, CancellationToken ct)
+    {
+        var wall = await db.PublicGalleries.SingleOrDefaultAsync(x => x.Slug == PortfolioWall.Slug, ct);
+        if (wall is null)
+        {
+            // Always published and first in wall order, so new uploads show at the top of the Portfolio page.
+            wall = new PublicGallery { Title = PortfolioWall.Title, Slug = PortfolioWall.Slug, IsPublished = true, SortOrder = int.MinValue };
+            db.PublicGalleries.Add(wall);
+            try { await db.SaveChangesAsync(ct); }
+            catch (DbUpdateException ex) when (ex.IsUniqueViolation())
+            {
+                // Created by a parallel upload a moment ago.
+                db.ChangeTracker.Clear();
+                wall = await db.PublicGalleries.SingleAsync(x => x.Slug == PortfolioWall.Slug, ct);
+            }
+        }
+        return await SaveImagesAsync(wall, files, newestFirst: true, ct);
+    }
+
     [HttpGet]
     public async Task<IReadOnlyList<AdminGalleryListItem>> List(CancellationToken ct)
     {
-        var rows = await db.PublicGalleries.AsNoTracking().OrderBy(g => g.SortOrder).ThenByDescending(g => g.CreatedAt)
+        var rows = await db.PublicGalleries.AsNoTracking().Where(g => g.Slug != PortfolioWall.Slug)
+            .OrderBy(g => g.SortOrder).ThenByDescending(g => g.CreatedAt)
             .Select(g => new { g.Id, g.Title, g.Slug, g.Category, g.IsPublished, g.IsFeatured, g.SortOrder, g.UpdatedAt,
                 Count = g.Images.Count, g.CoverImage, First = g.Images.OrderBy(i => i.SortOrder).FirstOrDefault() })
             .ToListAsync(ct);
@@ -76,6 +112,7 @@ public sealed class AdminGalleriesController(AppDbContext db, PublicMediaStore s
     [HttpPost]
     public async Task<ActionResult<AdminGalleryDetail>> Create(SaveGalleryRequest r, CancellationToken ct)
     {
+        if (r.Slug == PortfolioWall.Slug) return this.ConflictProblem("That URL slug is reserved.");
         if (await db.PublicGalleries.AnyAsync(g => g.Slug == r.Slug, ct)) return this.ConflictProblem("That URL slug is already used.");
         var g = new PublicGallery();
         Apply(g, r);
@@ -88,8 +125,9 @@ public sealed class AdminGalleriesController(AppDbContext db, PublicMediaStore s
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, SaveGalleryRequest r, CancellationToken ct)
     {
-        var g = await db.PublicGalleries.SingleOrDefaultAsync(x => x.Id == id, ct);
+        var g = await db.PublicGalleries.SingleOrDefaultAsync(x => x.Id == id && x.Slug != PortfolioWall.Slug, ct);
         if (g is null) return this.NotFoundProblem("Gallery not found.");
+        if (r.Slug == PortfolioWall.Slug) return this.ConflictProblem("That URL slug is reserved.");
         if (await db.PublicGalleries.AnyAsync(x => x.Slug == r.Slug && x.Id != id, ct)) return this.ConflictProblem("That URL slug is already used.");
         Apply(g, r);
         await db.SaveChangesAsync(ct);
@@ -99,7 +137,7 @@ public sealed class AdminGalleriesController(AppDbContext db, PublicMediaStore s
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id, CancellationToken ct)
     {
-        var g = await db.PublicGalleries.Include(x => x.Images).SingleOrDefaultAsync(x => x.Id == id, ct);
+        var g = await db.PublicGalleries.Include(x => x.Images).SingleOrDefaultAsync(x => x.Id == id && x.Slug != PortfolioWall.Slug, ct);
         if (g is null) return this.NotFoundProblem("Gallery not found.");
         var keys = g.Images.Select(i => i.Image.Key).ToList();
         g.CoverImageId = null;
@@ -119,10 +157,20 @@ public sealed class AdminGalleriesController(AppDbContext db, PublicMediaStore s
     {
         var g = await db.PublicGalleries.SingleOrDefaultAsync(x => x.Id == id, ct);
         if (g is null) return this.NotFoundProblem("Gallery not found.");
+        return await SaveImagesAsync(g, files, newestFirst: g.Slug == PortfolioWall.Slug, ct);
+    }
+
+    /// <param name="newestFirst">Put new photos before the existing ones (the wall) instead of after (stories).</param>
+    private async Task<ActionResult<IReadOnlyList<AdminGalleryImage>>> SaveImagesAsync(PublicGallery g, IFormFileCollection files, bool newestFirst, CancellationToken ct)
+    {
         if (files.Count == 0) return this.FieldError("files", "Choose at least one image.");
 
         var max = storage.Value.MaxImageUploadMb * 1024L * 1024;
-        var next = (await db.PublicImages.Where(i => i.GalleryId == id).MaxAsync(i => (int?)i.SortOrder, ct) ?? -1) + 1;
+        var existing = db.PublicImages.Where(i => i.GalleryId == g.Id);
+        // Newest first: the batch takes the slots just below the current minimum, keeping its own order.
+        var next = newestFirst
+            ? (await existing.MinAsync(i => (int?)i.SortOrder, ct) ?? 0) - files.Count
+            : (await existing.MaxAsync(i => (int?)i.SortOrder, ct) ?? -1) + 1;
         var added = new List<PublicImage>();
         foreach (var file in files)
         {
@@ -135,7 +183,7 @@ public sealed class AdminGalleriesController(AppDbContext db, PublicMediaStore s
             }
             catch (InvalidUploadException ex) { return this.FieldError("files", $"{file.FileName}: {ex.Message}"); }
 
-            var img = new PublicImage { GalleryId = id, Image = asset, AltText = "", SortOrder = next++ };
+            var img = new PublicImage { GalleryId = g.Id, Image = asset, AltText = "", SortOrder = next++ };
             db.PublicImages.Add(img);
             added.Add(img);
             await db.SaveChangesAsync(ct); // save per image so a later failure keeps earlier work
@@ -240,7 +288,9 @@ public sealed class AdminFilmsController(AppDbContext db, PublicMediaStore store
     {
         var f = await db.PublicFilms.SingleOrDefaultAsync(x => x.Id == id, ct);
         if (f is null) return this.NotFoundProblem("Film not found.");
-        if (r.IsPublished && f.VideoKey is null) return this.FieldError("isPublished", "Upload the video before publishing.");
+        // A poster alone is enough: the site shows the film as "coming soon" until the video is uploaded.
+        if (r.IsPublished && f.VideoKey is null && f.Poster is null)
+            return this.FieldError("isPublished", "Upload a poster image or the video before publishing.");
         f.Title = r.Title.Trim();
         f.Description = string.IsNullOrWhiteSpace(r.Description) ? null : r.Description.Trim();
         f.IsPublished = r.IsPublished;

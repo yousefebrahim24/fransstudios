@@ -1,20 +1,39 @@
+import '@fontsource/neuton/300.css'
+import '@fontsource/neuton/400.css'
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, ScrollRestoration, useLocation } from 'react-router'
 import { t } from '../i18n/index.js'
-import { studio } from '../content/site.js'
+import { copyrightHolder, footerContacts, socials, studio } from '../content/site.js'
+import { ContactIcon, SocialIcon } from '../components/public/FooterIcons.jsx'
+import logoBlack from '../assets/brand/logo-black.png'
+import logoWhite from '../assets/brand/logo-white.png'
 import '../styles/public.css'
 
+// Order follows the Figma header.
 const links = [
-  { to: '/portfolio', label: t('nav.portfolio') },
-  { to: '/films', label: t('nav.films') },
+  { to: '/', label: t('nav.home'), end: true },
   { to: '/about', label: t('nav.about') },
-  { to: '/packages', label: t('nav.packages') },
+  { to: '/films', label: t('nav.films') },
+  { to: '/portfolio', label: t('nav.portfolio') },
   { to: '/contact', label: t('nav.contact') },
+  { to: '/packages', label: t('nav.packages') },
+  { to: '/client', label: t('nav.login') },
 ]
+
+function InstagramIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <rect x="3" y="3" width="18" height="18" rx="5" />
+      <circle cx="12" cy="12" r="4.2" />
+      <circle cx="17.3" cy="6.7" r="0.9" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
 
 export default function PublicLayout() {
   const location = useLocation()
-  const overHero = location.pathname === '/'
+  // Pages whose top is a full-bleed photo: the header starts transparent over it.
+  const overHero = ['/', '/about', '/packages', '/contact'].includes(location.pathname.replace(/\/$/, '') || '/')
   const [menuOpen, setMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
 
@@ -43,17 +62,21 @@ export default function PublicLayout() {
       </a>
       <header className={`pub-header ${solid ? 'pub-header--solid' : 'pub-header--over'}`}>
         <div className="pub-header__inner">
+          {/* White logo over the hero photo; black logo on the white (scrolled / other pages) header. */}
           <Link to="/" className="pub-logo" aria-label="Frans Studios — home">
-            <span className="pub-logo__word">Frans</span>
-            <span className="pub-logo__sub">Studios</span>
+            <img className="pub-logo__img pub-logo__img--white" src={logoWhite} width={1402} height={368} alt="" />
+            <img className="pub-logo__img pub-logo__img--black" src={logoBlack} width={1402} height={368} alt="" />
           </Link>
 
           <nav className="pub-nav" aria-label="Main">
             {links.map((l) => (
-              <NavLink key={l.to} to={l.to} className="pub-nav__link">
+              <NavLink key={l.to} to={l.to} end={l.end} className="pub-nav__link">
                 {l.label}
               </NavLink>
             ))}
+            <a href={studio.instagramHref} className="pub-nav__icon" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
+              <InstagramIcon />
+            </a>
           </nav>
 
           <button
@@ -71,13 +94,13 @@ export default function PublicLayout() {
 
         <nav id="mobile-menu" className="pub-mobile-nav" data-open={menuOpen} aria-label="Main" hidden={!menuOpen}>
           {links.map((l) => (
-            <NavLink key={l.to} to={l.to} className="pub-mobile-nav__link">
+            <NavLink key={l.to} to={l.to} end={l.end} className="pub-mobile-nav__link">
               {l.label}
             </NavLink>
           ))}
-          <Link to="/client" className="pub-mobile-nav__client">
-            {t('nav.clientLogin')}
-          </Link>
+          <a href={studio.instagramHref} className="pub-mobile-nav__client" target="_blank" rel="noopener noreferrer">
+            Instagram {studio.instagramHandle}
+          </a>
         </nav>
       </header>
 
@@ -85,35 +108,36 @@ export default function PublicLayout() {
         <Outlet />
       </main>
 
+      {/* Footer (latest design): #F5F5F5 — logo, then about text | contacts | social icons; black credit bar. */}
       <footer className="pub-footer">
         <div className="pub-footer__inner">
-          <div className="pub-footer__brand">
-            <p className="pub-logo pub-logo--footer">
-              <span className="pub-logo__word">Frans</span>
-              <span className="pub-logo__sub">Studios</span>
-            </p>
-            <p className="pub-footer__line">{studio.footerLine}</p>
-          </div>
-          <div className="pub-footer__col">
-            <h2 className="eyebrow">{t('nav.contact')}</h2>
-            <a href={`mailto:${studio.email}`}>{studio.email}</a>
-            <a href={studio.phoneHref}>{studio.phoneDisplay}</a>
-            <a href={studio.whatsappHref} target="_blank" rel="noopener noreferrer">
-              WhatsApp
-            </a>
-          </div>
-          <div className="pub-footer__col">
-            <h2 className="eyebrow">Follow</h2>
-            <a href={studio.instagramHref} target="_blank" rel="noopener noreferrer">
-              Instagram {studio.instagramHandle}
-            </a>
-          </div>
-          <div className="pub-footer__col">
-            <h2 className="eyebrow">Clients</h2>
-            <Link to="/client">{t('nav.clientLogin')}</Link>
-          </div>
+          <Link to="/" className="pub-footer__logo" aria-label="Frans Studios — home">
+            <img src={logoBlack} width={1402} height={368} alt="" />
+          </Link>
+          <p className="pub-footer__about">{studio.footerAbout}</p>
+          <address className="pub-footer__contact">
+            {footerContacts.map((c) => (
+              <a key={c.icon} href={c.href} {...(c.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
+                <ContactIcon name={c.icon} />
+                {c.label}
+              </a>
+            ))}
+          </address>
+          <ul className="pub-footer__social" role="list" aria-label="Frans Studios on social media">
+            {socials
+              .filter((s) => s.href)
+              .map((s) => (
+                <li key={s.name}>
+                  <a href={s.href} target="_blank" rel="noopener noreferrer" aria-label={s.name}>
+                    <SocialIcon name={s.name} />
+                  </a>
+                </li>
+              ))}
+          </ul>
         </div>
-        <p className="pub-footer__legal">© {new Date().getFullYear()} Frans Studios</p>
+        <p className="pub-footer__credit">
+          © {new Date().getFullYear()} {copyrightHolder}. All rights reserved.
+        </p>
       </footer>
       <ScrollRestoration />
     </>

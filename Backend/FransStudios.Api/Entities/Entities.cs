@@ -197,6 +197,21 @@ public class PublicGallery : ITimestamped
     public List<PublicImage> Images { get; set; } = [];
 }
 
+/// <summary>
+/// Photos uploaded straight to the Portfolio wall (Admin → Portfolio → Upload photos) live in one built-in,
+/// always-published gallery with this slug. It feeds the wall only: it is never listed as a story, has no
+/// story page and is left out of the sitemap.
+/// </summary>
+public static class PortfolioWall
+{
+    public const string Slug = "portfolio-wall";
+    public const string Title = "Portfolio";
+
+    /// <summary>Published galleries that are real stories (excludes the built-in wall gallery).</summary>
+    public static IQueryable<PublicGallery> PublishedStories(this IQueryable<PublicGallery> q) =>
+        q.Where(g => g.IsPublished && g.Slug != Slug);
+}
+
 public class PublicImage
 {
     public int Id { get; set; }

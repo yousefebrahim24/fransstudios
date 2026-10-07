@@ -156,7 +156,7 @@ export default function GalleryEditPage() {
           <ErrorBanner error={saveError} />
           {notice && <p className="form-success">{notice}</p>}
           <Field label="Title" required value={form.title} onChange={set('title')} />
-          <Field label="URL slug" hint={`/portfolio/${form.slug}`} required value={form.slug} onChange={set('slug')} error={saveError?.fieldErrors?.slug} />
+          <Field label="Page address" hint={`fransstudios.com/portfolio/${form.slug}`} required value={form.slug} onChange={set('slug')} error={saveError?.fieldErrors?.slug} />
           <div className="adm-form__row">
             <Field label="Category" as="select" value={form.category} onChange={set('category')}>
               <option value="wedding">Wedding</option>

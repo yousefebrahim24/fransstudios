@@ -302,6 +302,20 @@
   padding-inline-start: 1.2rem;
 }
 
+/* Heading row inside a page (title + action), e.g. Portfolio → Stories. */
+.adm-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+
+.adm-section-head h2 {
+  margin: 0;
+}
+
 /* Buttons */
 .adm-btn {
   display: inline-flex;
